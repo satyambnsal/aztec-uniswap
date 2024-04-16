@@ -1,9 +1,9 @@
 {
-  "name": "private_voting_codespace",
+  "name": "aztec_contracts",
   "version": "1.0.0",
   "main": "index.js",
-  "repository": "https://github.com/critesjosh/private_voting_codespace.git",
-  "author": "Josh Crites <jc@joshcrites.com>",
+  "repository": "https://github.com/satyambnsal/aztec-starter",
+  "author": "Satyam Bansal <satyamsgsits1994@gmail.com>",
   "license": "MIT",
   "private": true,
   "type": "module",
