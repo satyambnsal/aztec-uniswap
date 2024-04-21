@@ -1,3 +1,5 @@
 {
-  "easy_private_voting_contract-EasyPrivateVoting.json": "97e135dc5e87fe1ea274cb889cb598f37304b20780e868b94efb7f17837ff134"
+  "easy_private_voting_contract-EasyPrivateVoting.json": "97e135dc5e87fe1ea274cb889cb598f37304b20780e868b94efb7f17837ff134",
+  "aztec_contracts-EasyPrivateVoting.json": "854448c4a4748b774f70355e9c9cac2d836e247a71d37e216db078d3535dff8f",
+  "aztec_contracts-contracts.easy_private_voting.json": "9c6c118d80c11034fc447d1ce335332d5e261b7c4d8d6d692085b2840899935e"
 }
