@@ -1,49 +1,59 @@
-contract EasyPrivateVoting {
+mod interfaces;
+
+
+contract UniswapV2 {
     use dep::aztec::prelude::{
         AztecAddress, FunctionSelector, NoteHeader, NoteInterface, NoteGetterOptions, PrivateContext,
         Map, PublicMutable
     };
     use dep::aztec::context::Context;
+    use crate::interfaces::Token;
+
     #[aztec(storage)]
     struct Storage {
-        admin: PublicMutable<AztecAddress>, // admin can end vote
-        tally: Map<Field, PublicMutable<Field>>, // we will store candidate as key and number of votes as value
-        vote_ended: PublicMutable<bool>, // vote_ended is boolean
+        token0: PublicMutable<AztecAddress>,
+        token1: PublicMutable<AztecAddress>,
+        reserve0: PublicMutable<Field>,
+        reserve1: PublicMutable<Field>,
     }
 
     #[aztec(public)]
     #[aztec(initializer)] // annotation to mark function as a constructor
-    fn constructor(admin: AztecAddress) {
-        storage.admin.write(admin);
-        storage.vote_ended.write(false);
-    }
-
-    #[aztec(private)] // annotation to mark function as private and expose private context
-    fn cast_vote(candidate: Field) {
-        let secret = context.request_nullifier_secret_key(context.msg_sender()); // get secret key of caller of function
-        let nullifier = dep::std::hash::pedersen_hash([context.msg_sender().to_field(), secret.low, secret.high]); // compute nullifier with this secret key so others can't descrypt it
-        context.push_new_nullifier(nullifier, 0); // push nullifier
-        context.call_public_function(
-            context.this_address(),
-            FunctionSelector::from_signature("add_to_tally_public(Field)"),
-            [candidate]
-        );
-    }
-
-    #[aztec(public)]
-    #[aztec(internal)]
-    fn add_to_tally_public(candidate: Field) {
-        assert(storage.vote_ended.read() == false, "Vote has ended"); // assert that vote has not ended
-        let new_tally = storage.tally.at(candidate).read() + 1;
-        storage.tally.at(candidate).write(new_tally);
+    fn constructor(_token0: AztecAddress, _token1: AztecAddress) {
+        storage.token0.write(_token0);
+        storage.token1.write(_token1);
     }
 
     #[aztec(public)] 
-    fn end_vote() {
-        assert(storage.admin.read().eq(context.msg_sender()), "Only admin can end votes"); // assert that caller is admin
-        storage.vote_ended.write(true);
+    fn tranfer_token0(to: AztecAddress, output_amount: Field, nonce_for_transfer_approval: Field) {
+        // Transfer funds to this contract
+        let token0_addr = storage.token0.read();
+        Token::at(token0_addr).transfer_public(
+            &mut context,
+            context.msg_sender(),
+            context.this_address(),
+            output_amount,
+            nonce_for_transfer_approval
+        );
+
+        // let curr_amount = Token::at(storage.token0.read()).balance_of_public(
+        //     &mut context,
+        //     context.msg_sender()
+        // );
+
+        // storage.reserve0.write(curr_amount - output_amount);
     }
-    unconstrained fn get_vote(candidate: Field) -> pub Field {
-        storage.tally.at(candidate).read()
+
+    // #[aztec(public)] 
+    // unconstrained fn balance_of_public(owner: AztecAddress) -> Field {
+    //     let res = Token::at(storage.token0.read()).balance_of_public(
+    //         // context.this_address()
+    //     );
+    //     res[0]
+    // }
+
+    #[aztec(public)] 
+    unconstrained fn dummy(token_addr: AztecAddress) -> bool {
+        token_addr.eq(storage.token0.read())
     }
 }
