@@ -1,4 +1,4 @@
-import { AztecAddress, Contract, loadContractArtifact, createPXEClient, Fr, computeMessageSecretHash } from "@aztec/aztec.js";
+import { AztecAddress, Contract, loadContractArtifact, createPXEClient, Fr, computeMessageSecretHash, ExtendedNote, Note } from "@aztec/aztec.js";
 import { readFileSync } from 'fs'
 import TokenContractJson from '../../target/aztec_contracts-contracts.token.json' assert {type: "json"};
 import chalk from "chalk";
@@ -80,6 +80,19 @@ export async function mintPrivate() {
   const receipt = await tx.wait();
   console.log(chalk.green(`Transaction has been mined on block ${chalk.bold(receipt.blockNumber)}`));
 
+  const storageSlot = new Fr(5);
+  const noteTypeId = new Fr(84114971101151129711410111011678111116101n); // TransparentNote
+  const note = new Note([new Fr(100n), secretHash]);
+  const extendedNote = new ExtendedNote(
+    note,
+    owner.getAddress(),
+    token.address,
+    storageSlot,
+    noteTypeId,
+    receipt.txHash,
+  );
+  await pxe.addNote(extendedNote);
+
   console.log(chalk.bgBlueBright(`Redeeming created note for second wallet: ${second.getAddress()} \n`))
 
   const tx1 = await token.methods.redeem_shield(second.getAddress(), 100n, random).send();
@@ -87,4 +100,10 @@ export async function mintPrivate() {
   console.log(chalk.blackBright('Awaiting transaction to be mined'));
   const receipt1 = await tx1.wait();
   console.log(chalk.green(`Transaction has been mined on block ${chalk.bold(receipt1.blockNumber)}`));
+}
+
+
+export async function shield() {
+  const [owner] = await getInitialTestAccountsWallets(pxe);
+  const token = getToken(owner);
 }

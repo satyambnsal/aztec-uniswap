@@ -82,6 +82,7 @@ async function main() {
       }
       case 'mint_private': await mintPrivate();
         break;
+
       case 'exit': return;
     }
   }
