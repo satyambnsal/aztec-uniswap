@@ -1,1 +1,2 @@
 mod contracts;
+mod types;
