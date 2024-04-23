@@ -46,6 +46,7 @@ yarn install
 aztec-nargo compile
 ```
 
+
 or
 
 ```bash
