@@ -13,10 +13,13 @@
     "compile": "${AZTEC_NARGO:-aztec-nargo} compile",
     "test": "NODE_NO_WARNINGS=1 node --experimental-vm-modules $(yarn bin jest) --no-cache --runInBand --config jest.integration.config.json",
     "update": "aztec-cli update --contract . && ./.github/scripts/update_contract.sh $(grep -oP 'tag\\s*=\\s*\"\\K[^\"]+' \"Nargo.toml\" | head -1)",
-    "deploy": "node src/scripts/deploy.mjs"
+    "deploy": "node src/scripts/deploy.mjs",
+    "cli": "node src/scripts/cli.mjs"
   },
   "dependencies": {
-    "@aztec/aztec.js": "0.34.0"
+    "@aztec/aztec.js": "0.34.0",
+    "@inquirer/prompts": "^5.0.1",
+    "chalk": "^5.3.0"
   },
   "devDependencies": {
     "@aztec/accounts": "0.34.0",
