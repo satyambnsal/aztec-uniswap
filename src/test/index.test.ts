@@ -40,36 +40,23 @@ describe("UniswapV2", () => {
         uniswap = await UniswapV2Contract.deploy(wallets[0], token0.address, token1.address)  
         .send()
         .deployed();
-    })
+    }, 120_000)
 
-    it("It increase UniswapV2 funds on mint", async () => {
-        const recipientAddr = uniswap.address;
-        expect(await token0.methods.balance_of_public(recipientAddr).simulate()).toEqual(0n);
-        let receipt = await token0.methods.mint_public(recipientAddr, 100n).send().wait();
-        expect(await token0.methods.balance_of_public(recipientAddr).simulate()).toEqual(100n);
-    }, 5_000)
-
-    // it("It dummny", async () => {
-    //     let res = await uniswap.methods.dummy().simulate();
-    //     console.log("res:", res);
+    // it("It increase UniswapV2 funds on mint", async () => {
+    //     const recipientAddr = uniswap.address;
+    //     expect(await token0.methods.balance_of_public(recipientAddr).simulate()).toEqual(0n);
+    //     let receipt = await token0.methods.mint_public(recipientAddr, 100n).send().wait();
+    //     expect(await token0.methods.balance_of_public(recipientAddr).simulate()).toEqual(100n);
     // }, 5_000)
 
-    // it("It transfers fund to UniswapV2 contract on transaction", async () => {
-    //     console.log("token 0 addr===================>", token0.address);
-    //     const recipientAddr = uniswap.address;
-    //     let alice_addr = alice.getAddress();
-    //     await token0.methods.mint_public(alice_addr, 100n).send().wait();
+    it("It transfers fund to UniswapV2 contract on transaction", async () => {
+        const recipientAddr = uniswap.address;
+        let alice_addr = alice.getAddress();
+        await token0.methods.mint_public(recipientAddr, 100n).send().wait();
 
-    //     expect(await token0.methods.balance_of_public(alice_addr).simulate()).toEqual(100n);
-    //     let reciept = await uniswap.methods.tranfer_token0(alice_addr, 10n, 0n).send().wait();
-    //     console.log("receip:", reciept);
-    //     expect(await token0.methods.balance_of_public(alice_addr).simulate()).toEqual(90n);
-    //     expect(await token0.methods.balance_of_public(recipientAddr).simulate()).toEqual(10n);
-    // }, 30_000)
-
-    it("It test addr match", async () => {
-        console.log("token 0 addr===================>", token0.address);
-        let res = await uniswap.methods.dummy(token0.address).simulate();
-        console.log("res:", res);
-    }, 10_000)
+        expect(await token0.methods.balance_of_public(recipientAddr).simulate()).toEqual(100n);
+        let reciept = await uniswap.methods.tranfer_token0(alice_addr,10n, 0n).send().wait();
+        expect(await token0.methods.balance_of_public(recipientAddr).simulate()).toEqual(90n);
+        expect(await token0.methods.balance_of_public(alice_addr).simulate()).toEqual(10n);
+    }, 15_000)
 });

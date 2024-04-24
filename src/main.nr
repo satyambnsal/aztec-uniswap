@@ -6,8 +6,9 @@ contract UniswapV2 {
         AztecAddress, FunctionSelector, NoteHeader, NoteInterface, NoteGetterOptions, PrivateContext,
         Map, PublicMutable
     };
-    use dep::aztec::context::Context;
+    use dep::aztec::context::{Context, gas::GasOpts};
     use crate::interfaces::Token;
+    // use dep::token::Token;
 
     #[aztec(storage)]
     struct Storage {
@@ -30,8 +31,8 @@ contract UniswapV2 {
         let token0_addr = storage.token0.read();
         Token::at(token0_addr).transfer_public(
             &mut context,
-            context.msg_sender(),
             context.this_address(),
+            to,
             output_amount,
             nonce_for_transfer_approval
         );
@@ -52,8 +53,4 @@ contract UniswapV2 {
     //     res[0]
     // }
 
-    #[aztec(public)] 
-    unconstrained fn dummy(token_addr: AztecAddress) -> bool {
-        token_addr.eq(storage.token0.read())
-    }
 }
