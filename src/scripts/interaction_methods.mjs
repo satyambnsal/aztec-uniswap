@@ -1,16 +1,44 @@
-import { AztecAddress, Contract, loadContractArtifact, createPXEClient, Fr, computeMessageSecretHash, ExtendedNote, Note } from "@aztec/aztec.js";
-import { readFileSync } from 'fs'
-import TokenContractJson from '../../target/aztec_contracts-contracts.token.json' assert {type: "json"};
+import { AztecAddress, createPXEClient, Fr, computeMessageSecretHash, ExtendedNote, Note } from "@aztec/aztec.js";
+import { readFileSync, writeFileSync } from 'fs'
+// import TokenContractJson from '../../target/aztec_contracts-contracts.token.json' assert {type: "json"};
 import chalk from "chalk";
-import { getInitialTestAccountsWallets } from "@aztec/accounts/testing";
+import { createAccount, getInitialTestAccountsWallets } from "@aztec/accounts/testing";
+import { TokenContract } from '@aztec/noir-contracts.js'
 
 const { PXE_URL = 'http://localhost:8080' } = process.env;
 
 const pxe = createPXEClient(PXE_URL);
 
+
+const getFirstAccount = (() => {
+  let firstAccount = null;
+
+  return async () => {
+    if (firstAccount) {
+      return firstAccount;
+    }
+    firstAccount = await createAccount(pxe)
+    return firstAccount
+  }
+})()
+
+const getSecondAccount = (() => {
+  let secondAccount = null;
+
+  return async () => {
+    if (secondAccount) {
+      return secondAccount;
+    }
+    secondAccount = await createAccount(pxe)
+    return secondAccount
+  }
+})()
+
+
+
 export async function getToken(client) {
   const addresses = JSON.parse(readFileSync('addresses.json'))
-  return Contract.at(AztecAddress.fromString(addresses.token), loadContractArtifact(TokenContractJson), client)
+  return TokenContract.at(AztecAddress.fromString(addresses.token), client)
 }
 
 export async function showPrivateBalances() {
@@ -35,10 +63,10 @@ export async function showPublicBalances() {
 }
 
 export async function deployTokenContract() {
-  const [ownerWallet] = await getInitialTestAccountsWallets(pxe);
-  const ownerAddress = ownerWallet.getCompleteAddress();
-  const TokenContractArtifact = loadContractArtifact(TokenContractJson);
-  const token = await Contract.deploy(ownerWallet, TokenContractArtifact, [ownerAddress, 'TokenName', 'TKN', 18])
+  let owner = await getFirstAccount();
+  const ownerAddress = owner.getCompleteAddress();
+  console.log(chalk.green(`Owner wallet address: ${owner.getAddress()}`))
+  const token = await TokenContract.deploy(owner, ownerAddress, 'TokenName', 'TKN', 18)
     .send()
     .deployed();
 
@@ -58,7 +86,8 @@ export async function showAllTestAccounts() {
 }
 
 export async function mintPublic(address, amount) {
-  const [owner] = await getInitialTestAccountsWallets(pxe);
+
+  let owner = await getFirstAccount();
   const token = await getToken(owner);
   const tx = await token.methods.mint_public(owner.getAddress(), 100n).send();
 
@@ -69,7 +98,9 @@ export async function mintPublic(address, amount) {
 }
 
 export async function mintPrivate() {
-  const [owner, second] = await getInitialTestAccountsWallets(pxe);
+  let owner = await getFirstAccount();
+  let recipient = await getSecondAccount();
+
   const token = await getToken(owner);
 
   const random = Fr.random();
@@ -80,22 +111,23 @@ export async function mintPrivate() {
   const receipt = await tx.wait();
   console.log(chalk.green(`Transaction has been mined on block ${chalk.bold(receipt.blockNumber)}`));
 
-  const storageSlot = new Fr(5);
-  const noteTypeId = new Fr(84114971101151129711410111011678111116101n); // TransparentNote
+  // const storageSlot = new Fr(5);
+  // const noteTypeId = new Fr(84114971101151129711410111011678111116101n); // TransparentNote
+
   const note = new Note([new Fr(100n), secretHash]);
   const extendedNote = new ExtendedNote(
     note,
-    owner.getAddress(),
+    recipient.getAddress(),
     token.address,
-    storageSlot,
-    noteTypeId,
+    TokenContract.storage.pending_shields.slot,
+    TokenContract.notes.TransparentNote.id,
     receipt.txHash,
   );
-  await pxe.addNote(extendedNote);
+  await recipient.addNote(extendedNote);
 
-  console.log(chalk.bgBlueBright(`Redeeming created note for second wallet: ${second.getAddress()} \n`))
+  console.log(chalk.bgBlueBright(`Redeeming created note for second wallet: ${recipient.getAddress()} \n`))
 
-  const tx1 = await token.methods.redeem_shield(second.getAddress(), 100n, random).send();
+  const tx1 = await token.methods.redeem_shield(recipient.getAddress(), 100n, random).send();
   console.log(`Sent mint transaction ${await tx.getTxHash()}`);
   console.log(chalk.blackBright('Awaiting transaction to be mined'));
   const receipt1 = await tx1.wait();
