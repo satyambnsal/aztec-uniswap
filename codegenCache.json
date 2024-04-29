@@ -1,5 +1,6 @@
 {
   "easy_private_voting_contract-EasyPrivateVoting.json": "97e135dc5e87fe1ea274cb889cb598f37304b20780e868b94efb7f17837ff134",
-  "aztec_contracts-contracts.token.json": "7d57639eee956b65647733512141cdb23caa9871acc93153ea28dbbf1878e80b",
-  "easy_private_voting_contract-easy_private_voting.json": "52ce83ad830082af7b79684a834c0ce2693600b1abd2f3c4ac5921cae3775d6e"
+  "aztec_contracts-contracts.token.json": "382343ee240d2d97ac4bd94d3b5e8f78d358b809a996d6b7380b28f56df7ec30",
+  "easy_private_voting_contract-easy_private_voting.json": "52ce83ad830082af7b79684a834c0ce2693600b1abd2f3c4ac5921cae3775d6e",
+  "aztec_contracts-UniswapV2.json": "1ed8721833adb9c35db9478b3f03d7490e8a9a8eda1d203b3a07164f9c42437c"
 }
