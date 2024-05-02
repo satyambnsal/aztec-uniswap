@@ -19,26 +19,12 @@ impl Token {
         amount: Field,
         nonce: Field
     ) {
-        let _= context.call_public_function(
+        let _ = context.delegate_call_public_function(
             self.address,
             FunctionSelector::from_signature("transfer_public((Field),(Field),Field,Field)"),
             [from.to_field(), to.to_field(), amount, nonce],
-            GasOpts::default()
+            // GasOpts::default()
         );
-    }
-
-    unconstrained fn balance_of_public(
-        self,
-        context: &mut PublicContext,
-        owner: AztecAddress
-        ) -> Field {
-        let res = context.call_public_function(
-            self.address,
-            FunctionSelector::from_signature("balance_of_public((Field))"),
-            [owner.to_field()],
-            GasOpts::default()
-        );
-        res[0]
     }
 
     pub fn unshield(
