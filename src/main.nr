@@ -132,11 +132,80 @@ contract UniswapV2 {
         );
 
         // check constant product K
-        assert(balance0_new * balance1_new >= reserve0 * reserve1);
+        assert(balance0_new * balance1_new >= reserve0 * reserve1, "K check failed");
         // update reserves
         storage.reserve0.write(balance0_new);
         storage.reserve1.write(balance1_new);
     }
+
+    #[aztec(private)]
+    fn swap_private(
+        amount0_in: Field,
+        amount0_out: Field,
+        amount1_in: Field,
+        amount1_out: Field,
+        nonce: Field,
+        secret_hash: Field
+    ) {
+        let token0_addr = storage.token0.read();
+        let token1_addr = storage.token1.read();
+
+        let from = context.msg_sender();
+        let this_addr = context.this_address();
+
+        if amount0_out != 0 {
+            Token::at(token0_addr).shield(&mut context, this_addr, amount0_out, secret_hash, 0);
+        } else {
+            Token::at(token1_addr).shield(&mut context, this_addr, amount1_out, secret_hash, 0);
+        }
+
+        // transfer tokens in
+        if amount0_in != 0 {
+            Token::at(token0_addr).unshield(&mut context, from, this_addr, amount0_in, nonce);
+        } else {
+            Token::at(token1_addr).unshield(&mut context, from, this_addr, amount1_in, nonce);
+        }
+
+        context.call_public_function(
+            context.this_address(),
+            FunctionSelector::from_signature("_update(Field,Field,Field,Field)"),
+            [amount0_in, amount0_out, amount1_in, amount1_out]
+        );
+    }
+
+    #[aztec(public)]
+    #[aztec(internal)]
+    fn _update(
+        amount0_in: Field,
+        amount0_out: Field,
+        amount1_in: Field,
+        amount1_out: Field
+    ) {
+        let amount0_in = U128::from_integer(amount0_in);
+        let amount1_in = U128::from_integer(amount1_in);
+        let amount0_out = U128::from_integer(amount0_out);
+        let amount1_out = U128::from_integer(amount1_out);
+        let zero = U128::from_integer(0);
+
+        let reserve0 = storage.reserve0.read();
+        let reserve1 = storage.reserve1.read();
+
+        assert(((amount0_in > zero) & (amount1_out > zero)) | ((amount1_in > zero) & (amount0_out > zero)), "UniswapV2: INSUFFICIENT_INPUT/OUPUT_AMOUNT");
+        assert((amount0_out < reserve0) & (amount1_out < reserve1), "Liquidity is not enough!" );
+
+        let reserve0_aft = reserve0 + amount0_in - amount0_out;
+        let reserve1_aft = reserve1 + amount1_in - amount1_out;
+
+        // constant product K check
+        let k_pre = reserve0.to_field().mul(reserve1.to_field());
+        let k_aft = reserve0_aft.to_field().mul(reserve1_aft.to_field());
+        assert(k_pre.lt(k_aft) | (k_pre == k_aft), "K check failed");
+
+        // update reserves
+        storage.reserve0.write(reserve0_aft);
+        storage.reserve1.write(reserve1_aft);
+    }
+
 
     #[aztec(public)]
     unconstrained fn getReserves() -> (Field, Field) {  // 

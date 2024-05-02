@@ -57,4 +57,12 @@ impl Token {
             [from.to_field(), to.to_field(), amount, nonce]
         );
     }
+
+    pub fn shield(self: Self, context: &mut PrivateContext, from: AztecAddress, amount: Field, secret_hash: Field, nonce: Field) {
+        context.call_public_function(
+            self.address,
+            FunctionSelector::from_signature("shield((Field),Field,Field,Field)"),
+            [from.to_field(), amount, secret_hash, nonce]
+        );
+    }
 }
