@@ -19,6 +19,22 @@ impl Token {
         amount: Field,
         nonce: Field
     ) {
+        let _ = context.call_public_function(
+            self.address,
+            FunctionSelector::from_signature("transfer_public((Field),(Field),Field,Field)"),
+            [from.to_field(), to.to_field(), amount, nonce],
+            GasOpts::default()
+        );
+    }
+
+    pub fn delegate_transfer_public(
+        self: Self,
+        context: &mut PublicContext,
+        from: AztecAddress,
+        to: AztecAddress,
+        amount: Field,
+        nonce: Field
+    ) {
         let _ = context.delegate_call_public_function(
             self.address,
             FunctionSelector::from_signature("transfer_public((Field),(Field),Field,Field)"),

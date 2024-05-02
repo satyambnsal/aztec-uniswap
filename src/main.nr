@@ -27,7 +27,7 @@ contract UniswapV2 {
         storage.token1.write(_token1);
     }
 
-    #[aztec(public)]
+    #[aztec(public)]  // add liquidity 
     fn mint(amount0: Field, amount1: Field, nonce0: Field, nonce1: Field) -> Field {  // returns liquity
         let (_reserve0, _reserve1) = (storage.reserve0.read(), storage.reserve0.read());
         let token0_addr = storage.token0.read();
@@ -41,7 +41,7 @@ contract UniswapV2 {
 
         assert((amount0 > U128::from_integer(0)) & (amount1 > U128::from_integer(0)), "Should add liquidity tokens first!");
         // transfer liquity in
-        Token::at(token0_addr).transfer_public(
+        Token::at(token0_addr).delegate_transfer_public(
             &mut context,
             msg_sender,
             this_addr,
@@ -50,7 +50,7 @@ contract UniswapV2 {
             nonce0
         );
 
-        Token::at(token1_addr).transfer_public(
+        Token::at(token1_addr).delegate_transfer_public(
             &mut context,
             msg_sender,
             this_addr,
@@ -82,6 +82,60 @@ contract UniswapV2 {
         // update reserve
         storage.reserve0.write(reserve0 + amount0);
         storage.reserve1.write(reserve1 + amount1);
+    }
+
+    #[aztec(public)]  // add liquidity 
+    fn swap(amount0_in:Field, amount1_out: Field, amount1_in: Field, amount0_out: Field, nonce: Field) {
+        let amount0_in = U128::from_integer(amount0_in);
+        let amount1_in = U128::from_integer(amount1_in);
+        let amount0_out = U128::from_integer(amount0_out);
+        let amount1_out = U128::from_integer(amount1_out);
+        let reserve0 = storage.reserve0.read();
+        let reserve1 = storage.reserve1.read();
+        let zero = U128::from_integer(0);
+        assert(((amount0_in > zero) & (amount1_out > zero)) | ((amount1_in > zero) & (amount0_out > zero)), "UniswapV2: INSUFFICIENT_INPUT/OUPUT_AMOUNT");
+        assert((amount0_out < reserve0) & (amount1_out < reserve1), "Liquidity is not enough!" );
+
+        let token0_addr = storage.token0.read();
+        let token1_addr = storage.token1.read();
+        let this_addr = context.this_address();
+        let msg_sender = context.msg_sender();
+
+
+        let (token_in, token_out, amount_in, amount_out, balance0_new, balance1_new) = if amount0_in > zero {
+            let balance0_new = reserve0 + amount0_in;
+            let balance1_new = reserve1 - amount1_out;
+            (token0_addr, token1_addr, amount0_in, amount1_out, balance0_new, balance1_new)
+        } else {
+            let balance0_new = reserve0 - amount0_out;
+            let balance1_new = reserve1 + amount1_in;
+            (token1_addr, token0_addr, amount1_in, amount0_out, balance0_new, balance1_new)
+        };
+        
+        // transfer token from user to UNI contract address
+        Token::at(token_in).delegate_transfer_public(
+            &mut context,
+            msg_sender,
+            this_addr,
+            0, // TODO: fix subtract with underflow 'hi == high' erro when amount0 is larger than 0
+            // amount_in.to_integer(),
+            nonce
+        );
+        // transfer swapped token from UNI contract address to user
+        Token::at(token_out).transfer_public(
+            &mut context,
+            this_addr,
+            msg_sender,
+            0,
+            // amount_out.to_integer(), // TODO: fix subtract with underflow 'hi == high' erro when amount0 is larger than 0
+            0
+        );
+
+        // check constant product K
+        assert(balance0_new * balance1_new >= reserve0 * reserve1);
+        // update reserves
+        storage.reserve0.write(balance0_new);
+        storage.reserve1.write(balance1_new);
     }
 
     #[aztec(public)]
