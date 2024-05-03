@@ -153,14 +153,14 @@ contract UniswapV2 {
         assert(liquidity > U128::from_integer(0), "Insufficient liquidity for sender");
 
         let total_supply = storage.total_supply.read();
-        assert(liquidity < total_supply, "Liquidity should be less than total supply");
+        assert(liquidity <= total_supply, "Liquidity should be less than total supply");
 
         let reserve0 = storage.reserve0.read();
         let reserve1 = storage.reserve1.read();
         let amount0 = liquidity * reserve0 / total_supply;
         let amount1 = liquidity * reserve1 / total_supply;
-        assert(amount0 < reserve0, "Insufficient token0 reserve");
-        assert(amount1 < reserve1, "Insufficient token1 reserve");
+        assert(amount0 <= reserve0, "Insufficient token0 reserve");
+        assert(amount1 <= reserve1, "Insufficient token1 reserve");
         storage.liquidity_balance_public.at(msg_sender).write(zero);
         storage.total_supply.write(total_supply - liquidity);
         storage.reserve0.write(reserve0 - amount0);
@@ -209,7 +209,8 @@ contract UniswapV2 {
         amount1_out: Field,
         amount1_in: Field,
         amount0_out: Field,
-        nonce: Field
+        nonce0: Field,
+        nonce1: Field
     ) {
         let amount0_in = U128::from_integer(amount0_in);
         let amount1_in = U128::from_integer(amount1_in);
@@ -239,22 +240,20 @@ contract UniswapV2 {
         };
 
         // transfer token from user to UNI contract address
-        Token::at(token_in).delegate_transfer_public(
+        Token::at(token_in).transfer_public(
             &mut context,
             msg_sender,
             this_addr,
-            0, // TODO: fix subtract with underflow 'hi == high' erro when amount0 is larger than 0
-            // amount_in.to_integer(),
-            nonce
+            amount_in.to_integer(),
+            nonce0
         );
         // transfer swapped token from UNI contract address to user
         Token::at(token_out).transfer_public(
             &mut context,
             this_addr,
             msg_sender,
-            0,
-            // amount_out.to_integer(), // TODO: fix subtract with underflow 'hi == high' erro when amount0 is larger than 0
-            0
+            amount_out.to_integer(),
+            nonce1
         );
 
         // check constant product K
