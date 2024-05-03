@@ -15,6 +15,7 @@ contract UniswapV2 {
         token0: PublicMutable<AztecAddress>,
         token1: PublicMutable<AztecAddress>,
         reserve0: PublicMutable<U128>,
+        // reserve0: Map<AztecAddress, PublicMutable<U128>>,
         reserve1: PublicMutable<U128>,
         total_supply: PublicMutable<U128>,
         liquidity_balance: Map<AztecAddress, PublicMutable<U128>>
@@ -29,7 +30,7 @@ contract UniswapV2 {
 
     #[aztec(public)]  // add liquidity 
     fn mint(amount0: Field, amount1: Field, nonce0: Field, nonce1: Field) -> Field {  // returns liquity
-        let (_reserve0, _reserve1) = (storage.reserve0.read(), storage.reserve0.read());
+        let (_reserve0, _reserve1) = (storage.reserve0.read(), storage.reserve1.read());
         let token0_addr = storage.token0.read();
         let token1_addr = storage.token1.read();
 
@@ -218,10 +219,12 @@ contract UniswapV2 {
         let token0_addr = storage.token0.read();
         let from = context.msg_sender();
         let to = context.this_address();
-        let _ = context.delegate_call_public_function(
+        let output_amount = U128::from_integer(output_amount);
+        let _ = context.call_public_function(
             token0_addr,
             FunctionSelector::from_signature("transfer_public((Field),(Field),Field,Field)"),
-            [from.to_field(), to.to_field(), 0, nonce],
+            [from.to_field(), to.to_field(), output_amount.to_integer(), nonce],
+            GasOpts::default()
         );
     }
 

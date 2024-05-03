@@ -2,6 +2,7 @@ import { UniswapV2ContractArtifact, UniswapV2Contract } from "../artifacts/Unisw
 import { AccountWallet, CompleteAddress, computeMessageSecretHash, ContractDeployer, Fr, PXE, waitForPXE, TxStatus, createPXEClient, getContractInstanceFromDeployParams } from "@aztec/aztec.js";
 import { getInitialTestAccountsWallets, createAccount } from "@aztec/accounts/testing"
 import { TokenContract } from '@aztec/noir-contracts.js/Token';
+import {publicDeployAccounts} from "../utils.js"
 
 const setupSandbox = async () => {
     const { PXE_URL = 'http://localhost:8080' } = process.env;
@@ -39,6 +40,12 @@ describe("UniswapV2", () => {
         token1 = await TokenContract.deploy(bob, bob.getCompleteAddress(), 'Token1', 'TokenSymbol1', 18)
         .send()
         .deployed();
+
+        try {
+            await publicDeployAccounts(alice, [alice])
+          } catch (err) {
+            console.warn('Account is already deplyed')
+        }
 
         uniswap = await UniswapV2Contract.deploy(wallets[0], token0.address, token1.address)  
         .send()
@@ -90,9 +97,10 @@ describe("UniswapV2", () => {
         await uniswap.withWallet(bob).methods.swap(amount0_in, amount1_out, amount1_in, amount0_out, 0).send().wait();
         expect(await uniswap.methods.get_reserves_0().simulate()).toEqual([102n,0n,0n,0n]);
         expect(await uniswap.methods.get_reserves_1().simulate()).toEqual([99n,0n,0n,0n]);
+        // check balance 
     }, 30_000)
 
-    it.only("It swaps privately from token0 to token1 succeeds", async() => {
+    it("It swaps privately from token0 to token1 succeeds", async() => {
         let alice_addr = alice.getAddress();
         await token0.methods.mint_public(alice_addr, 100n).send().wait();
         await token1.methods.mint_public(alice_addr, 100n).send().wait();
@@ -110,12 +118,23 @@ describe("UniswapV2", () => {
         // await token1.methods.redeem_shield(bob.getAddress(), 1n, secret).send().wait();
     }, 30_000)
 
-    // it.only("It transfer token from user to UNI contract", async () => {
-    //     const recipientAddr = uniswap.address;
-    //     let alice_addr = alice.getAddress();
-    //     await token0.methods.mint_public(alice_addr, new Fr(100n)).send().wait();
-    //     await token0.methods.mint_public(recipientAddr, new Fr(100n)).send().wait();
+    it.only("It transfer token from user to UNI contract", async () => {
+        const recipientAddr = uniswap.address;
+        let alice_addr = alice.getAddress();
 
-    //     await uniswap.withWallet(alice).methods.test_tranfer_token0(new Fr(10n), 0).send().wait();
-    // })
+        await token0.methods.mint_public(alice_addr, new Fr(100n)).send().wait();
+        // docs:start:authwit_public_transfer_example
+        const amount = 10n;
+        const action = token0
+            .withWallet(alice)
+            .methods.transfer_public(alice_addr, recipientAddr, amount, 0);
+
+        await alice.setPublicAuthWit({ caller: recipientAddr, action }, true).send().wait();
+        // docs:end:authwit_public_transfer_example
+        await uniswap.withWallet(alice).methods.test_tranfer_token0(amount, 0).send().wait();
+        let uniswap_balance = await token0.methods.balance_of_public(recipientAddr).simulate();
+
+        expect(await token0.methods.balance_of_public(recipientAddr).simulate()).toEqual(10n);
+        expect(await token0.methods.balance_of_public(alice_addr).simulate()).toEqual(90n);
+    })
 });
