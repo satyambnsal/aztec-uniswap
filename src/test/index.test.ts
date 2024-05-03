@@ -44,7 +44,12 @@ describe('UniswapV2', () => {
     accounts = wallets.map((w) => w.getCompleteAddress())
     alice = wallets[0]
     bob = wallets[1]
-    // await publicDeployAccounts(alice, [alice, bob])
+
+    try {
+      await publicDeployAccounts(alice, [alice])
+    } catch (err) {
+      console.warn('Account is already deplyed')
+    }
 
     token0 = await TokenContract.deploy(
       alice,
@@ -76,32 +81,27 @@ describe('UniswapV2', () => {
     // const token0_balance_alice = await token0.methods.balance_of_public(alice_addr).simulate()
     // const token1_balance_alice = await token1.methods.balance_of_public(alice_addr).simulate()
     // console.log({ token0_balance_alice, token1_balance_alice })
-    const nonce0 = Fr.random()
-    const nonce1 = Fr.random()
+    const nonce_zero = new Fr(0n)
 
     /** Public authwit start */
-    // const transferMessageHash1 = computeAuthWitMessageHash(
-    //   uniswap.address,
-    //   alice.getChainId(),
-    //   alice.getVersion(),
-    //   token0.methods.transfer_public(alice_addr, uniswap.address, 10n, nonce).request()
-    // )
 
-    // const transferMessageHash2 = computeAuthWitMessageHash(
-    //   uniswap.address,
-    //   alice.getChainId(),
-    //   alice.getVersion(),
-    //   token1.methods.transfer_public(alice_addr, uniswap.address, 10n, nonce).request()
-    // )
+    const action0 = token0
+      .withWallet(alice)
+      .methods.transfer_public(alice_addr, uniswap.address, 10n, nonce_zero)
 
-    // await alice.setPublicAuthWit(transferMessageHash1, true).send().wait()
-    // await alice.setPublicAuthWit(transferMessageHash2, true).send().wait()
+    const action1 = token1
+      .withWallet(alice)
+      .methods.transfer_public(alice_addr, uniswap.address, 10n, nonce_zero)
+
+    await alice.setPublicAuthWit({ caller: uniswap.address, action: action0 }, true).send().wait()
+
+    await alice.setPublicAuthWit({ caller: uniswap.address, action: action1 }, true).send().wait()
 
     /** Public Authwith end*/
     await uniswap.withWallet(alice).methods.mint(10n, 10n, 0, 0).send().wait()
 
-    // expect(await token0.methods.balance_of_public(alice_addr).simulate()).toEqual(90n);
-    // expect(await token1.methods.balance_of_public(alice_addr).simulate()).toEqual(90n);
+    expect(await token0.methods.balance_of_public(alice_addr).simulate()).toEqual(90n)
+    expect(await token1.methods.balance_of_public(alice_addr).simulate()).toEqual(90n)
 
     expect(await uniswap.methods.get_reserves_0().simulate()).toEqual([10n, 0n, 0n, 0n])
     expect(await uniswap.methods.get_reserves_1().simulate()).toEqual([10n, 0n, 0n, 0n])

@@ -45,21 +45,19 @@ contract UniswapV2 {
             (amount0 > U128::from_integer(0)) & (amount1 > U128::from_integer(0)), "Should add liquidity tokens first!"
         );
         // transfer liquity in
-        Token::at(token0_addr).delegate_transfer_public(
+        Token::at(token0_addr).transfer_public(
             &mut context,
             msg_sender,
             this_addr,
-            // amount0.to_integer(),
-            0,
+            amount0.to_integer(),
             nonce0
         );
 
-        Token::at(token1_addr).delegate_transfer_public(
+        Token::at(token1_addr).transfer_public(
             &mut context,
             msg_sender,
             this_addr,
-            // amount1.to_integer(),
-            0,
+            amount1.to_integer(),
             nonce1
         );
 
