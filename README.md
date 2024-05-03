@@ -99,3 +99,8 @@ You may need to update permissions with:
 ```bash
 chmod +x update_contract.sh
 ```
+
+
+1. Remove liquidity publicly
+2. add liquidity privately
+3. Remove liquidity privately

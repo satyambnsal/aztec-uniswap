@@ -1,6 +1,5 @@
 mod interfaces;
 
-
 contract UniswapV2 {
     use dep::aztec::prelude::{
         AztecAddress, FunctionSelector, NoteHeader, NoteInterface, NoteGetterOptions, PrivateContext,
@@ -8,6 +7,7 @@ contract UniswapV2 {
     };
     use dep::aztec::context::{Context, gas::GasOpts};
     use crate::interfaces::Token;
+    use dep::authwit::auth::{IS_VALID_SELECTOR, compute_outer_authwit_hash};
     // use dep::token::Token;
 
     #[aztec(storage)]
@@ -28,7 +28,7 @@ contract UniswapV2 {
     }
 
     #[aztec(public)]  // add liquidity 
-    fn mint(amount0: Field, amount1: Field, nonce0: Field, nonce1: Field) -> Field {  // returns liquity
+    fn mint(amount0: Field, amount1: Field, nonce0: Field, nonce1: Field) -> Field { // returns liquity
         let (_reserve0, _reserve1) = (storage.reserve0.read(), storage.reserve0.read());
         let token0_addr = storage.token0.read();
         let token1_addr = storage.token1.read();
@@ -39,14 +39,16 @@ contract UniswapV2 {
         let amount0 = U128::from_integer(amount0);
         let amount1 = U128::from_integer(amount1);
 
-        assert((amount0 > U128::from_integer(0)) & (amount1 > U128::from_integer(0)), "Should add liquidity tokens first!");
+        assert(
+            (amount0 > U128::from_integer(0)) & (amount1 > U128::from_integer(0)), "Should add liquidity tokens first!"
+        );
         // transfer liquity in
         Token::at(token0_addr).delegate_transfer_public(
             &mut context,
             msg_sender,
             this_addr,
-            0, // TODO: fix subtract with underflow 'hi == high' erro when amount0 is larger than 0
-            // amount0,
+            // amount0.to_integer(),
+            0,
             nonce0
         );
 
@@ -54,8 +56,8 @@ contract UniswapV2 {
             &mut context,
             msg_sender,
             this_addr,
-            0, 
-            // amount1 as Field,
+            // amount1.to_integer(),
+            0,
             nonce1
         );
 
@@ -63,9 +65,9 @@ contract UniswapV2 {
         let reserve0 = storage.reserve0.read();
         let reserve1 = storage.reserve1.read();
         let mut liquidity = U128::from_integer(0);
-        if (total_supply == U128::from_integer(0) ) {
+        if (total_supply == U128::from_integer(0)) {
             liquidity = amount0 * amount1;
-        } else {   // TODO, the result should be sqrted
+        } else { // TODO, the result should be sqrted
             let t1 = amount0 * total_supply / reserve0;
             let t2 = amount1 * total_supply / reserve1;
             if t1 < t2 {
@@ -84,8 +86,44 @@ contract UniswapV2 {
         storage.reserve1.write(reserve1 + amount1);
     }
 
+    #[aztec(public)]
+    fn burn() {
+        let msg_sender = context.msg_sender();
+        let zero = U128::from_integer(0);
+        let liquidity = storage.liquidity_balance.at(msg_sender).read();
+        assert(liquidity > U128::from_integer(0), "Insufficient liquidity for sender");
+
+        let total_supply = storage.total_supply.read();
+        assert(liquidity < total_supply, "Liquidity should be less than total supply");
+
+        let reserve0 = storage.reserve0.read();
+        let reserve1 = storage.reserve1.read();
+        let amount0 = liquidity * reserve0 / total_supply;
+        let amount1 = liquidity * reserve1 / total_supply;
+        assert(amount0 < reserve0, "Insufficient token0 reserve");
+        assert(amount1 < reserve1, "Insufficient token1 reserve");
+
+        storage.liquidity_balance.at(msg_sender).write(zero);
+        storage.total_supply.write(total_supply - liquidity);
+        storage.reserve0.write(reserve0 - amount0);
+        storage.reserve1.write(reserve1 - amount1);
+
+        let token0_addr = storage.token0.read();
+        let token1_addr = storage.token1.read();
+        let this_addr = context.this_address();
+
+        Token::at(token0_addr).transfer_public(&mut context, this_addr, msg_sender, amount0.to_integer(), 0);
+        Token::at(token1_addr).transfer_public(&mut context, this_addr, msg_sender, amount1.to_integer(), 0);
+    }
+
     #[aztec(public)]  // add liquidity 
-    fn swap(amount0_in:Field, amount1_out: Field, amount1_in: Field, amount0_out: Field, nonce: Field) {
+    fn swap(
+        amount0_in: Field,
+        amount1_out: Field,
+        amount1_in: Field,
+        amount0_out: Field,
+        nonce: Field
+    ) {
         let amount0_in = U128::from_integer(amount0_in);
         let amount1_in = U128::from_integer(amount1_in);
         let amount0_out = U128::from_integer(amount0_out);
@@ -93,14 +131,15 @@ contract UniswapV2 {
         let reserve0 = storage.reserve0.read();
         let reserve1 = storage.reserve1.read();
         let zero = U128::from_integer(0);
-        assert(((amount0_in > zero) & (amount1_out > zero)) | ((amount1_in > zero) & (amount0_out > zero)), "UniswapV2: INSUFFICIENT_INPUT/OUPUT_AMOUNT");
-        assert((amount0_out < reserve0) & (amount1_out < reserve1), "Liquidity is not enough!" );
+        assert(
+            ((amount0_in > zero) & (amount1_out > zero)) | ((amount1_in > zero) & (amount0_out > zero)), "UniswapV2: INSUFFICIENT_INPUT/OUPUT_AMOUNT"
+        );
+        assert((amount0_out < reserve0) & (amount1_out < reserve1), "Liquidity is not enough!");
 
         let token0_addr = storage.token0.read();
         let token1_addr = storage.token1.read();
         let this_addr = context.this_address();
         let msg_sender = context.msg_sender();
-
 
         let (token_in, token_out, amount_in, amount_out, balance0_new, balance1_new) = if amount0_in > zero {
             let balance0_new = reserve0 + amount0_in;
@@ -111,7 +150,7 @@ contract UniswapV2 {
             let balance1_new = reserve1 + amount1_in;
             (token1_addr, token0_addr, amount1_in, amount0_out, balance0_new, balance1_new)
         };
-        
+
         // transfer token from user to UNI contract address
         Token::at(token_in).delegate_transfer_public(
             &mut context,
@@ -175,12 +214,7 @@ contract UniswapV2 {
 
     #[aztec(public)]
     #[aztec(internal)]
-    fn _update(
-        amount0_in: Field,
-        amount0_out: Field,
-        amount1_in: Field,
-        amount1_out: Field
-    ) {
+    fn _update(amount0_in: Field, amount0_out: Field, amount1_in: Field, amount1_out: Field) {
         let amount0_in = U128::from_integer(amount0_in);
         let amount1_in = U128::from_integer(amount1_in);
         let amount0_out = U128::from_integer(amount0_out);
@@ -190,8 +224,10 @@ contract UniswapV2 {
         let reserve0 = storage.reserve0.read();
         let reserve1 = storage.reserve1.read();
 
-        assert(((amount0_in > zero) & (amount1_out > zero)) | ((amount1_in > zero) & (amount0_out > zero)), "UniswapV2: INSUFFICIENT_INPUT/OUPUT_AMOUNT");
-        assert((amount0_out < reserve0) & (amount1_out < reserve1), "Liquidity is not enough!" );
+        assert(
+            ((amount0_in > zero) & (amount1_out > zero)) | ((amount1_in > zero) & (amount0_out > zero)), "UniswapV2: INSUFFICIENT_INPUT/OUPUT_AMOUNT"
+        );
+        assert((amount0_out < reserve0) & (amount1_out < reserve1), "Liquidity is not enough!");
 
         let reserve0_aft = reserve0 + amount0_in - amount0_out;
         let reserve1_aft = reserve1 + amount1_in - amount1_out;
@@ -206,9 +242,8 @@ contract UniswapV2 {
         storage.reserve1.write(reserve1_aft);
     }
 
-
     #[aztec(public)]
-    unconstrained fn getReserves() -> (Field, Field) {  // 
+    unconstrained fn getReserves() -> (Field, Field) { // 
         (storage.reserve0.read(), storage.reserve0.read())
     }
 
@@ -221,7 +256,7 @@ contract UniswapV2 {
         let _ = context.delegate_call_public_function(
             token0_addr,
             FunctionSelector::from_signature("transfer_public((Field),(Field),Field,Field)"),
-            [from.to_field(), to.to_field(), 0, nonce],
+            [from.to_field(), to.to_field(), 0, nonce]
         );
     }
 
@@ -235,4 +270,15 @@ contract UniswapV2 {
         storage.reserve1.read().to_integer()
     }
 
+    #[aztec(public)]
+    fn spend_public_authwit(inner_hash: Field) -> Field {
+        let message_hash = compute_outer_authwit_hash(
+            context.msg_sender(),
+            context.chain_id(),
+            context.version(),
+            inner_hash
+        );
+        context.push_new_nullifier(message_hash, 0);
+        IS_VALID_SELECTOR
+    }
 }
