@@ -1,4 +1,5 @@
 mod interfaces;
+mod types;
 
 contract UniswapV2 {
     use dep::aztec::prelude::{
@@ -9,6 +10,7 @@ contract UniswapV2 {
     use crate::interfaces::Token;
     use dep::authwit::auth::{IS_VALID_SELECTOR, compute_outer_authwit_hash};
     // use dep::token::Token;
+    use crate::types::{transparent_note::TransparentNote, token_note::{TokenNote, TOKEN_NOTE_LEN}, balances_map::BalancesMap};
 
     #[aztec(storage)]
     struct Storage {
@@ -17,7 +19,8 @@ contract UniswapV2 {
         reserve0: PublicMutable<U128>,
         reserve1: PublicMutable<U128>,
         total_supply: PublicMutable<U128>,
-        liquidity_balance: Map<AztecAddress, PublicMutable<U128>>
+        liquidity_balance_public: Map<AztecAddress, PublicMutable<U128>>,
+        liquidity_balance_private: BalancesMap<TokenNote>
     }
 
     #[aztec(public)]
@@ -29,7 +32,6 @@ contract UniswapV2 {
 
     #[aztec(public)]  // add liquidity 
     fn mint(amount0: Field, amount1: Field, nonce0: Field, nonce1: Field) -> Field { // returns liquity
-        let (_reserve0, _reserve1) = (storage.reserve0.read(), storage.reserve0.read());
         let token0_addr = storage.token0.read();
         let token1_addr = storage.token1.read();
 
@@ -79,7 +81,66 @@ contract UniswapV2 {
 
         // mint to user
         storage.total_supply.write(total_supply + liquidity);
-        storage.liquidity_balance.at(msg_sender).write(liquidity);
+        storage.liquidity_balance_public.at(msg_sender).write(liquidity);
+
+        // update reserve
+        storage.reserve0.write(reserve0 + amount0);
+        storage.reserve1.write(reserve1 + amount1);
+    }
+
+    #[aztec(private)]
+    fn mint_private(amount0: Field, amount1: Field, nonce0: Field, nonce1: Field) -> Field {
+        let token0_addr = storage.token0.read();
+        let token1_addr = storage.token1.read();
+
+        let this_addr = context.this_address();
+        let msg_sender = context.msg_sender();
+
+        let amount0 = U128::from_integer(amount0);
+        let amount1 = U128::from_integer(amount1);
+
+        assert(
+            (amount0 > U128::from_integer(0)) & (amount1 > U128::from_integer(0)), "Should add liquidity tokens first!"
+        );
+
+        /*
+        How do I transfer token privately from user's private balance
+        */
+
+        Token::at(token0_addr).unshield(
+            &mut context,
+            msg_sender,
+            this_addr,
+            amount0.to_integer(),
+            nonce0
+        );
+        Token::at(token1_addr).unshield(
+            &mut context,
+            msg_sender,
+            this_addr,
+            amount1.to_integer(),
+            nonce0
+        );
+
+        let total_supply = storage.total_supply.read();
+        let reserve0 = storage.reserve0.read();
+        let reserve1 = storage.reserve1.read();
+        let mut liquidity = U128::from_integer(0);
+        if (total_supply == U128::from_integer(0)) {
+            liquidity = amount0 * amount1;
+        } else { // TODO, the result should be sqrted
+            let t1 = amount0 * total_supply / reserve0;
+            let t2 = amount1 * total_supply / reserve1;
+            if t1 < t2 {
+                liquidity = t1;
+            } else {
+                liquidity = t2;
+            }
+        }
+
+        // mint to user
+        storage.total_supply.write(total_supply + liquidity);
+        storage.liquidity_balance_private.add(msg_sender, U128::from_integer(liquidity));
 
         // update reserve
         storage.reserve0.write(reserve0 + amount0);
@@ -90,7 +151,7 @@ contract UniswapV2 {
     fn burn() {
         let msg_sender = context.msg_sender();
         let zero = U128::from_integer(0);
-        let liquidity = storage.liquidity_balance.at(msg_sender).read();
+        let liquidity = storage.liquidity_balance_public.at(msg_sender).read();
         assert(liquidity > U128::from_integer(0), "Insufficient liquidity for sender");
 
         let total_supply = storage.total_supply.read();
@@ -102,8 +163,7 @@ contract UniswapV2 {
         let amount1 = liquidity * reserve1 / total_supply;
         assert(amount0 < reserve0, "Insufficient token0 reserve");
         assert(amount1 < reserve1, "Insufficient token1 reserve");
-
-        storage.liquidity_balance.at(msg_sender).write(zero);
+        storage.liquidity_balance_public.at(msg_sender).write(zero);
         storage.total_supply.write(total_supply - liquidity);
         storage.reserve0.write(reserve0 - amount0);
         storage.reserve1.write(reserve1 - amount1);
@@ -114,6 +174,37 @@ contract UniswapV2 {
 
         Token::at(token0_addr).transfer_public(&mut context, this_addr, msg_sender, amount0.to_integer(), 0);
         Token::at(token1_addr).transfer_public(&mut context, this_addr, msg_sender, amount1.to_integer(), 0);
+    }
+
+    #[aztec(private)]
+    fn burn_private() {
+        let msg_sender = context.msg_sender();
+        let zero = U128::from_integer(0);
+        let msg_sender = context.msg_sender();
+        let liquidity = storage.liquidity_balance_private.balance_of(msg_sender);
+        assert(liquidity > U128::from_integer(0), "Insufficient liquidity for sender");
+
+        let total_supply = storage.total_supply.read();
+        assert(liquidity < total_supply, "Liquidity should be less than total supply");
+
+        let reserve0 = storage.reserve0.read();
+        let reserve1 = storage.reserve1.read();
+        let amount0 = liquidity * reserve0 / total_supply;
+        let amount1 = liquidity * reserve1 / total_supply;
+        assert(amount0 < reserve0, "Insufficient token0 reserve");
+        assert(amount1 < reserve1, "Insufficient token1 reserve");
+        storage.liquidity_balance_private.sub(msg_sender, liquidity);
+        storage.total_supply.write(total_supply - liquidity);
+        storage.reserve0.write(reserve0 - amount0);
+        storage.reserve1.write(reserve1 - amount1);
+
+        let token0_addr = storage.token0.read();
+        let token1_addr = storage.token1.read();
+        let this_addr = context.this_address();
+
+        //TODO: Figure out a way to transfer tokens from uniswap public balance to user's private balance without needing a secret.
+        // Token::at(token0_addr).transfer_public(&mut context, this_addr, msg_sender, amount0.to_integer(), 0);
+        // Token::at(token1_addr).transfer_public(&mut context, this_addr, msg_sender, amount1.to_integer(), 0);
     }
 
     #[aztec(public)]  // add liquidity 
