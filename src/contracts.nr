@@ -1,2 +1,1 @@
-mod easy_private_voting;
-mod token;
+// mod easy_private_voting;
