@@ -4,7 +4,7 @@ mod types;
 contract UniswapV2 {
     use dep::aztec::prelude::{
         AztecAddress, FunctionSelector, NoteHeader, NoteInterface, NoteGetterOptions, PrivateContext,
-        Map, PublicMutable
+        Map, PublicMutable, PrivateSet
     };
     use dep::aztec::context::{Context, gas::GasOpts};
     use crate::interfaces::Token;
@@ -20,6 +20,7 @@ contract UniswapV2 {
         reserve1: PublicMutable<U128>,
         total_supply: PublicMutable<U128>,
         liquidity_balance_public: Map<AztecAddress, PublicMutable<U128>>,
+        pending_liquidity_shields: PrivateSet<TransparentNote>,
         liquidity_balance_private: BalancesMap<TokenNote>
     }
 
@@ -87,18 +88,15 @@ contract UniswapV2 {
     }
 
     #[aztec(private)]
-    fn mint_private(amount0: Field, amount1: Field, nonce0: Field, nonce1: Field) -> Field {
-        let token0_addr = storage.token0.read();
-        let token1_addr = storage.token1.read();
-
+    fn mint_private(token0_addr: AztecAddress, token1_addr: AztecAddress, amount0: Field, amount1: Field, nonce0: Field, nonce1: Field, secret_hash: Field) -> Field {
         let this_addr = context.this_address();
         let msg_sender = context.msg_sender();
 
-        let amount0 = U128::from_integer(amount0);
-        let amount1 = U128::from_integer(amount1);
+        let amount0_u128 = U128::from_integer(amount0);
+        let amount1_u128 = U128::from_integer(amount1);
 
         assert(
-            (amount0 > U128::from_integer(0)) & (amount1 > U128::from_integer(0)), "Should add liquidity tokens first!"
+            (amount0_u128 > U128::from_integer(0)) & (amount1_u128 > U128::from_integer(0)), "Liquidity should be larger than 0!"
         );
 
         /*
@@ -109,17 +107,32 @@ contract UniswapV2 {
             &mut context,
             msg_sender,
             this_addr,
-            amount0.to_integer(),
+            amount0,
             nonce0
         );
         Token::at(token1_addr).unshield(
             &mut context,
             msg_sender,
             this_addr,
-            amount1.to_integer(),
+            amount1,
             nonce0
         );
 
+        context.call_public_function(
+            this_addr,
+            FunctionSelector::from_signature("_update_mint_private((Field),(Field),Field,Field,Field)"),
+            [token0_addr.to_field(), token1_addr.to_field(), amount0, amount1, secret_hash]
+        );
+    }
+
+    #[aztec(public)]
+    #[aztec(internal)]
+    fn _update_mint_private(token0: AztecAddress, token1: AztecAddress, amount0: Field, amount1: Field, secret_hash: Field) {
+        let token0_addr = storage.token0.read();
+        let token1_addr = storage.token1.read();
+        assert((token0 == token0_addr) & (token1 == token1_addr), "Invalid token address!");
+        let (amount0, amount1) = (U128::from_integer(amount0), U128::from_integer(amount0));
+        let pending_shields = storage.pending_liquidity_shields;
         let total_supply = storage.total_supply.read();
         let reserve0 = storage.reserve0.read();
         let reserve1 = storage.reserve1.read();
@@ -138,7 +151,8 @@ contract UniswapV2 {
 
         // mint to user
         storage.total_supply.write(total_supply + liquidity);
-        storage.liquidity_balance_private.add(msg_sender, U128::from_integer(liquidity));
+        let mut note = TransparentNote::new(liquidity.to_integer(), secret_hash);
+        pending_shields.insert_from_public(&mut note);  // redeeem liquity later
 
         // update reserve
         storage.reserve0.write(reserve0 + amount0);

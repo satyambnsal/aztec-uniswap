@@ -1,6 +1,7 @@
-import { type Wallet, BatchCall } from '@aztec/aztec.js'
+import { type Wallet, BatchCall, Fr, TxHash, ExtendedNote, Note } from '@aztec/aztec.js'
 import { SchnorrAccountContractArtifact } from '@aztec/accounts/schnorr'
 import { registerContractClass, deployInstance } from '@aztec/aztec.js/deployment'
+import { TokenContract } from '@aztec/noir-contracts.js'
 
 export async function publicDeployAccounts(sender: Wallet, accountsToDeploy: Wallet[]) {
   const accountAddressesToDeploy = accountsToDeploy.map((a) => a.getAddress())
@@ -13,4 +14,18 @@ export async function publicDeployAccounts(sender: Wallet, accountsToDeploy: Wal
   ])
   const result = await batch.send().wait()
   console.log('accounts deployed successfully', result.status, result.txHash)
+}
+
+
+export async function addPendingShieldNoteToPXE(sender: Wallet, asset: TokenContract, amount: bigint, secretHash: Fr, txHash: TxHash) {
+  const note = new Note([new Fr(amount), secretHash]);
+  const extendedNote = new ExtendedNote(
+    note,
+    sender.getAddress(),
+    asset.address,
+    TokenContract.storage.pending_shields.slot,
+    TokenContract.notes.TransparentNote.id,
+    txHash,
+  );
+  await sender.addNote(extendedNote);
 }
