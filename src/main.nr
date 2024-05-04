@@ -94,14 +94,9 @@ contract UniswapV2 {
 
         let amount0_u128 = U128::from_integer(amount0);
         let amount1_u128 = U128::from_integer(amount1);
-
         assert(
             (amount0_u128 > U128::from_integer(0)) & (amount1_u128 > U128::from_integer(0)), "Liquidity should be larger than 0!"
         );
-
-        /*
-        How do I transfer token privately from user's private balance
-        */
 
         Token::at(token0_addr).unshield(
             &mut context,
@@ -131,6 +126,7 @@ contract UniswapV2 {
         let token0_addr = storage.token0.read();
         let token1_addr = storage.token1.read();
         assert((token0 == token0_addr) & (token1 == token1_addr), "Invalid token address!");
+
         let (amount0, amount1) = (U128::from_integer(amount0), U128::from_integer(amount0));
         let pending_shields = storage.pending_liquidity_shields;
         let total_supply = storage.total_supply.read();
@@ -243,14 +239,10 @@ contract UniswapV2 {
         let this_addr = context.this_address();
         let msg_sender = context.msg_sender();
 
-        let (token_in, token_out, amount_in, amount_out, balance0_new, balance1_new) = if amount0_in > zero {
-            let balance0_new = reserve0 + amount0_in;
-            let balance1_new = reserve1 - amount1_out;
-            (token0_addr, token1_addr, amount0_in, amount1_out, balance0_new, balance1_new)
+        let (token_in, token_out, amount_in, amount_out) = if amount0_in > zero {
+            (token0_addr, token1_addr, amount0_in, amount1_out)
         } else {
-            let balance0_new = reserve0 - amount0_out;
-            let balance1_new = reserve1 + amount1_in;
-            (token1_addr, token0_addr, amount1_in, amount0_out, balance0_new, balance1_new)
+            (token1_addr, token0_addr, amount1_in, amount0_out)
         };
 
         // transfer token from user to UNI contract address
@@ -271,34 +263,35 @@ contract UniswapV2 {
         );
 
         // check constant product K
-        assert(balance0_new * balance1_new >= reserve0 * reserve1, "K check failed");
+        let reserve0_aft = reserve0 + amount0_in - amount0_out;
+        let reserve1_aft = reserve1 + amount1_in - amount1_out;
+        assert(reserve0_aft * reserve1_aft >= reserve0 * reserve1, "K check failed");
         // update reserves
-        storage.reserve0.write(balance0_new);
-        storage.reserve1.write(balance1_new);
+        storage.reserve0.write(reserve0_aft);
+        storage.reserve1.write(reserve1_aft);
     }
 
     #[aztec(private)]
     fn swap_private(
+        token0_addr: AztecAddress, 
+        token1_addr: AztecAddress,
         amount0_in: Field,
-        amount0_out: Field,
-        amount1_in: Field,
         amount1_out: Field,
+        amount1_in: Field,
+        amount0_out: Field,
         nonce: Field,
         secret_hash: Field
     ) {
-        let token0_addr = storage.token0.read();
-        let token1_addr = storage.token1.read();
-
         let from = context.msg_sender();
         let this_addr = context.this_address();
 
         if amount0_out != 0 {
-            Token::at(token0_addr).shield(&mut context, this_addr, amount0_out, secret_hash, 0);
+            Token::at(token0_addr).shield(&mut context, this_addr, amount0_out, secret_hash, nonce);
         } else {
-            Token::at(token1_addr).shield(&mut context, this_addr, amount1_out, secret_hash, 0);
+            Token::at(token1_addr).shield(&mut context, this_addr, amount1_out, secret_hash, nonce);
         }
 
-        // transfer tokens in
+        // transfer tokens to UNI contract
         if amount0_in != 0 {
             Token::at(token0_addr).unshield(&mut context, from, this_addr, amount0_in, nonce);
         } else {
@@ -307,14 +300,18 @@ contract UniswapV2 {
 
         context.call_public_function(
             context.this_address(),
-            FunctionSelector::from_signature("_update(Field,Field,Field,Field)"),
-            [amount0_in, amount0_out, amount1_in, amount1_out]
+            FunctionSelector::from_signature("_update_swap((Field),(Field),Field,Field,Field,Field)"),
+            [token0_addr.to_field(), token1_addr.to_field(), amount0_in, amount0_out, amount1_in, amount1_out]
         );
     }
 
     #[aztec(public)]
     #[aztec(internal)]
-    fn _update(amount0_in: Field, amount0_out: Field, amount1_in: Field, amount1_out: Field) {
+    fn _update_swap(token0: AztecAddress, token1: AztecAddress, amount0_in: Field, amount0_out: Field, amount1_in: Field, amount1_out: Field) {
+        let token0_addr = storage.token0.read();
+        let token1_addr = storage.token1.read();
+        assert((token0 == token0_addr) & (token1 == token1_addr), "Invalid token address!");
+
         let amount0_in = U128::from_integer(amount0_in);
         let amount1_in = U128::from_integer(amount1_in);
         let amount0_out = U128::from_integer(amount0_out);

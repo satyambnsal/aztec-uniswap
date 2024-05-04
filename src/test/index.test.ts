@@ -10,6 +10,7 @@ import {
   getContractInstanceFromDeployParams,
   computeAuthWitMessageHash,
   TxHash,
+  Wallet,
 } from '@aztec/aztec.js'
 import { getInitialTestAccountsWallets, createAccount } from '@aztec/accounts/testing'
 import { TokenContract } from '@aztec/noir-contracts.js/Token'
@@ -205,7 +206,23 @@ describe('UniswapV2', () => {
     expect(await token1.methods.balance_of_public(alice_addr).simulate()).toEqual(100n)
   }, 120_000)
 
-  describe.only("Mint privately", () => {
+  describe("Test private functions", () => {
+    const addLiquidity = async (amount0: Fr, amount1: Fr) => {
+      const nonce_zero = new Fr(0n)
+      /** Public authwit start */
+      const action0 = token0
+        .withWallet(alice)
+        .methods.transfer_public(alice.getAddress(), uniswap.address, amount0, nonce_zero)
+      const action1 = token1
+        .withWallet(alice)
+        .methods.transfer_public(alice.getAddress(), uniswap.address, amount1, nonce_zero)
+      await alice.setPublicAuthWit({ caller: uniswap.address, action: action0 }, true).send().wait()
+      await alice.setPublicAuthWit({ caller: uniswap.address, action: action1 }, true).send().wait()
+      /** Public Authwith end*/
+
+      await uniswap.withWallet(alice).methods.mint(amount0, amount1, 0, 0).send().wait()
+    }
+
     it('It adds liquidity privately succeeds', async () => {
       let alice_addr = alice.getAddress()
       let mint_amount = BigInt(Math.floor(Math.random() * 10000000))
@@ -247,31 +264,49 @@ describe('UniswapV2', () => {
       expect(await token0.methods.balance_of_private(alice_addr).simulate()).toEqual(mint_amount - amount0)
       expect(await token1.methods.balance_of_private(alice_addr).simulate()).toEqual(mint_amount - amount1)
     }, 120_000)  
+
+    it.only('It swaps privately from token0 to token1 succeeds', async () => {
+      let alice_addr = alice.getAddress()
+      // add liquidity first 
+      let amount = 100n
+      await token0.methods.mint_public(alice_addr, amount).send().wait()
+      await token1.methods.mint_public(alice_addr, amount).send().wait()
+      await addLiquidity(new Fr(amount), new Fr(amount))
+      
+      // mint and redeeem private tokens of token0 to alice
+      let secret_hash0 = computeMessageSecretHash(secret0)
+      const receipt0 = await token0.methods.mint_private(amount, secret_hash0).send().wait();
+      let txHash0 = receipt0.txHash;
+      await addPendingShieldNoteToPXE(alice,token0, amount, secret_hash0, txHash0);
+      await token0.methods.redeem_shield(alice_addr, amount, secret0).send().wait()
+  
+      // swap by alice
+      let [amount0_in, amount1_out, amount1_in, amount0_out] = [2n, 1n, 0n, 0n]
+      /** Private authwit start */
+      const action0 = token0
+        .withWallet(alice)
+        .methods.unshield(alice_addr, uniswap.address, amount0_in, 0)
+      const witness0 = await alice.createAuthWit({ caller: uniswap.address, action: action0 })
+      await alice.addAuthWitness(witness0)
+      /** Private Authwith end*/
+      let secret_hash1 = computeMessageSecretHash(secret1)
+      const receipt = await uniswap
+        .withWallet(alice)
+        .methods.swap_private(token0.address, token1.address, amount0_in, amount1_out, amount1_in, amount0_out, 0, secret_hash1)
+        .send()
+        .wait()
+
+      expect(await uniswap.methods.get_reserves_0().simulate()).toEqual([amount + amount0_in, 0n, 0n, 0n])
+      expect(await uniswap.methods.get_reserves_1().simulate()).toEqual([amount - amount1_out, 0n, 0n, 0n])
+      expect(await token0.methods.balance_of_public(uniswap.address).simulate()).toEqual(amount + amount0_in)
+      expect(await token1.methods.balance_of_public(uniswap.address).simulate()).toEqual(amount - amount1_out)
+      expect(await token0.methods.balance_of_private(alice_addr).simulate()).toEqual(amount - amount0_in)
+
+      await addPendingShieldNoteToPXE(alice, token1, amount1_out, secret_hash1, receipt.txHash)
+      await token1.methods.redeem_shield(alice_addr, amount1_out, secret1).send().wait()
+      expect(await token1.methods.balance_of_private(alice_addr).simulate()).toEqual(amount1_out)
+    }, 200_000)
   })
-
-  it('It swaps privately from token0 to token1 succeeds', async () => {
-    let alice_addr = alice.getAddress()
-    await token0.methods.mint_private(100n, secret_hash0).send().wait()
-    await token1.methods.mint_private(100n, secret_hash1).send().wait()
-
-    // add liquity by Alice first
-    await uniswap.withWallet(alice).methods.mint(100n, 100n, 0, 0).send().wait()
-    expect(await uniswap.methods.get_reserves_0().simulate()).toEqual([100n, 0n, 0n, 0n])
-    expect(await uniswap.methods.get_reserves_1().simulate()).toEqual([100n, 0n, 0n, 0n])
-    // swap by Bob
-    let [amount0_in, amount1_out, amount1_in, amount0_out] = [2n, 1n, 0n, 0n]
-    await uniswap
-      .withWallet(bob)
-      .methods.swap_private(amount0_in, amount1_out, amount1_in, amount0_out, 0, secret_hash0)
-      .send()
-      .wait()
-    expect(await uniswap.methods.get_reserves_0().simulate()).toEqual([102n, 0n, 0n, 0n])
-    expect(await uniswap.methods.get_reserves_1().simulate()).toEqual([99n, 0n, 0n, 0n])
-    expect(await token0.methods.balance_of_public(uniswap.address).simulate()).toEqual(99n)
-    expect(await token1.methods.balance_of_public(uniswap.address).simulate()).toEqual(102n)
-    // redeem sheild successfully
-    // await token1.methods.redeem_shield(bob.getAddress(), 1n, secret).send().wait();
-  }, 30_000)
 
   describe('Mint-redeem privately flow ', () => {
     let txHash0: TxHash
@@ -291,13 +326,4 @@ describe('UniswapV2', () => {
       token1.methods.redeem_shield(alice.getAddress(), amount, secret1).send().wait();
     });
   });
-
-  // it.only("It transfer token from user to UNI contract", async () => {
-  //     const recipientAddr = uniswap.address;
-  //     let alice_addr = alice.getAddress();
-  //     await token0.methods.mint_public(alice_addr, new Fr(100n)).send().wait();
-  //     await token0.methods.mint_public(recipientAddr, new Fr(100n)).send().wait();
-
-  //     await uniswap.withWallet(alice).methods.test_tranfer_token0(new Fr(10n), 0).send().wait();
-  // })
 })
