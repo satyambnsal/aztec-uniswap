@@ -1,106 +1,29 @@
-# Aztec Starter
-
-This repo is meant to be a starting point for writing Aztec contracts and tests.
-
-You can find the Easy Private Voting contract in `./src/main.nr`. A simple integration test is in `./src/test/index.test.ts`.
-
-The corresponding tutorial can be found in the [Aztec docs here](https://docs.aztec.network/dev_docs/tutorials/writing_private_voting_contract).
-
-## Getting Started
-
-[Start your codespace from the codespace dropdown](https://docs.github.com/en/codespaces/getting-started/quickstart).
-
-Get the sandbox, aztec-cli and other tooling with this command:
-
-```bash
-bash -i <(curl -s install.aztec.network)
+# How to run
 ```
+# Install the Aztec Toolkit version 0.33.0
+aztec-up 0.33.0
 
-Modify the toolkit version to match the version (`x.x.x`) specified in Nargo.toml with:
-
-```
-aztec-up x.x.x
-```
-
-or update to the latest version with:
-
-```bash
-aztec-up
-```
-
-Start the sandbox with:
-
-```bash
+# Start the Aztec Sandbox environment
 aztec-sandbox
-```
 
-## Install packages
+# Clone our repository
+git clone https://github.com/satyambnsal/aztec-uniswap
 
-```bash
-yarn install
-```
+# Navigate into the cloned repository directory
+cd aztec-uniswap
 
-## Compile
-
-```bash
-aztec-nargo compile
-```
-
-or
-
-```bash
+# Compile the contract code
 yarn compile
-```
 
-## Codegen
-
-Generate the contract artifact json and typescript interface
-
-```bash
+# Generate contract artifacts and TypeScript interfaces
 yarn codegen
-```
 
-## Deploy
-
-Add `ADMIN` to your environment.
-
-```bash
-ADMIN="0x1d30d4de97657983408587c7a91ba6587774b30f0e70224a0658f0357092f495"
-```
-
-```bash
-aztec-cli deploy src/artifacts/EasyPrivateVoting.json --args $ADMIN
-```
-
-## Test
-
-```bash
+# Execute the test suite
 yarn test
 ```
 
-## Error resolution
-
-### Update Nodejs and Noir dependencies
-
-```bash
-aztec-cli update
-```
-
-### Update Contract
-
-Get the contract code from the monorepo. The script will look at the versions defined in `./Nargo.toml` and fetch that version of the code from the monorepo.
-
-```bash
-yarn update
-```
-
-You may need to update permissions with:
-
-```bash
-chmod +x update_contract.sh
-```
-
-
-1. Remove liquidity publicly
-2. add liquidity privately
-3. Remove liquidity privately
+# Contract Capabilities
+The contract has been programmed with two hard-coded tokens and currently offers the following capabilities:
+- Supply liquidity privately or publicly: Users can add liquidity to the pool either in a transparent manner or privately.
+- Swap privately or publicly: Tokens can be swapped within the pool both publicly and through a private transaction.
+- Remove liquidity publicly: Users can remove liquidity from the pool publicly. The functionality for private liquidity removal is under development.
