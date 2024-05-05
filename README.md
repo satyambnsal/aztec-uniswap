@@ -3,7 +3,7 @@
 # Install the Aztec Toolkit version 0.33.0
 aztec-up 0.33.0
 
-# Start the Aztec Sandbox environment
+# Start the Aztec Sandbox environment. Must restart it if you have beening running the sandbox.
 aztec-sandbox
 
 # Clone our repository
@@ -21,6 +21,8 @@ yarn codegen
 # Execute the test suite
 yarn test
 ```
+
+> If you encounter any error when testing, please restart your aztec-sandbox due to `publicDeployAccounts` requires some fresh setup. Then, rerun `yarn test`.
 
 # Contract Capabilities
 The contract has been programmed with two hard-coded tokens and currently offers the following capabilities:
